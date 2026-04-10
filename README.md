@@ -3,7 +3,7 @@
 A tool for analysing Chainguard library coverage against PyPI publish dates. It consists of two parts:
 
 1. **`add_pypi_dates.py`** — enriches a Chainguard Python build report CSV with PyPI publish dates
-2. **`dashboard.html`** — an interactive dashboard for loading the enriched CSV and visualising coverage by publish year
+2. **`index.html`** — an interactive dashboard for loading the enriched CSV and visualising coverage by publish year
 
 ## Background
 
@@ -46,7 +46,7 @@ This fetches publish dates from the PyPI JSON API concurrently and writes a new 
 
 ### Step 3 — Load into the dashboard
 
-Open `dashboard.html` in a browser and load the enriched CSV via the file picker or drag-and-drop. No server required — everything runs locally in the browser.
+Open `index.html` in a browser and load the enriched CSV via the file picker or drag-and-drop. No server required — everything runs locally in the browser.
 
 The dashboard requires the CSV to have `PyPI Published` and `Status` columns.
 
