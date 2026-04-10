@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PyPI Publish Year Histogram</title>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px;
+    }
+    h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 8px; color: #f8fafc; }
+    p.sub { font-size: 0.85rem; color: #94a3b8; margin-bottom: 28px; }
+
+    #drop-zone {
+      border: 2px dashed #334155;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 520px;
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      background: #1e293b;
+    }
+    #drop-zone.drag-over { border-color: #6366f1; background: #1e1b4b; }
+    #drop-zone svg { margin-bottom: 12px; opacity: 0.5; }
+    #drop-zone p { color: #94a3b8; font-size: 0.9rem; }
+    #drop-zone span { color: #818cf8; text-decoration: underline; cursor: pointer; }
+    #file-input { display: none; }
+
+    #stats {
+      display: none;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 24px 0 8px;
+      width: 100%;
+      max-width: 960px;
+      justify-content: center;
+    }
+    .stat-card {
+      background: #1e293b;
+      border-radius: 8px;
+      padding: 10px 18px;
+      text-align: center;
+      min-width: 110px;
+    }
+    .stat-card .num { font-size: 1.4rem; font-weight: 700; }
+    .stat-card .lbl { font-size: 0.72rem; color: #64748b; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    #controls {
+      display: none;
+      gap: 12px;
+      margin: 16px 0;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      max-width: 960px;
+    }
+    label { font-size: 0.82rem; color: #94a3b8; }
+    select, input[type=range] { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 5px 8px; font-size: 0.82rem; }
+    .toggle-group { display: flex; gap: 6px; flex-wrap: wrap; }
+    .toggle-btn {
+      padding: 4px 10px; border-radius: 20px; font-size: 0.78rem; border: 1px solid #334155;
+      cursor: pointer; background: #1e293b; color: #94a3b8; transition: all 0.15s;
+    }
+    .toggle-btn.active { border-color: currentColor; filter: brightness(1.2); }
+
+    #chart-row {
+      display: flex;
+      gap: 20px;
+      width: 100%;
+      max-width: 1200px;
+      align-items: flex-start;
+      margin-top: 8px;
+    }
+    #chart { flex: 1; min-width: 0; height: 520px; }
+    #legend-panel {
+      flex: 0 0 220px;
+      background: #1e293b;
+      border-radius: 10px;
+      padding: 16px;
+      margin-top: 4px;
+    }
+    #legend-panel h3 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #64748b;
+      margin-bottom: 14px;
+    }
+    .legend-item { display: flex; gap: 10px; margin-bottom: 14px; }
+    .legend-item:last-child { margin-bottom: 0; }
+    .legend-swatch {
+      flex: 0 0 12px;
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      margin-top: 3px;
+    }
+    .legend-item .legend-title {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-bottom: 3px;
+    }
+    .legend-item .legend-desc {
+      font-size: 0.75rem;
+      color: #64748b;
+      line-height: 1.4;
+    }
+    #error-msg { color: #f87171; font-size: 0.85rem; margin-top: 12px; display: none; }
+  </style>
+</head>
+<body>
+
+<h1>PyPI Publish Year Histogram</h1>
+<p class="sub">Upload a CSV with <code>PyPI Published</code> (YYYY-MM-DD) and <code>Status</code> columns</p>
+
+<div id="drop-zone">
+  <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#94a3b8" stroke-width="1.5">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+  </svg>
+  <p>Drag &amp; drop your CSV here, or <span id="browse-link">browse</span></p>
+  <p style="margin-top:6px;font-size:0.75rem;color:#475569;">Expects columns: <code>PyPI Published</code>, <code>Status</code></p>
+  <input type="file" id="file-input" accept=".csv" />
+</div>
+
+<p id="error-msg"></p>
+
+<div id="stats"></div>
+<div id="controls"></div>
+<div id="chart-row">
+  <div id="chart"></div>
+  <div id="legend-panel">
+    <h3>Status Legend</h3>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:#f97316"></div>
+      <div>
+        <div class="legend-title">Build Failed</div>
+        <div class="legend-desc">Packages that Chainguard attempted to build but failed — needs investigation</div>
+      </div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:#22c55e"></div>
+      <div>
+        <div class="legend-title">Found</div>
+        <div class="legend-desc">Packages that Chainguard have built versions of and are ready to consume</div>
+      </div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:#94a3b8"></div>
+      <div>
+        <div class="legend-title">Not in PyPI</div>
+        <div class="legend-desc">Packages not available in PyPI — version pulled or never published there</div>
+      </div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:#a78bfa"></div>
+      <div>
+        <div class="legend-title">Excluded</div>
+        <div class="legend-desc">Libraries Chainguard can't build due to license or lack of source</div>
+      </div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:#ef4444"></div>
+      <div>
+        <div class="legend-title">Error</div>
+        <div class="legend-desc">Chainguard internal build error — needs investigation</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── colour palette per status ───────────────────────────────────────────────
+const STATUS_COLORS = {
+  found:        '#22c55e',
+  build_failed: '#f97316',
+  error:        '#ef4444',
+  excluded:     '#a78bfa',
+  not_in_pypi:  '#64748b',
+  not_found:    '#94a3b8',
+  unknown:      '#475569',
+};
+function colorFor(s) {
+  return STATUS_COLORS[s] ?? '#6366f1';
+}
+
+// ── state ───────────────────────────────────────────────────────────────────
+let allData = [];   // [{year, status}]
+let chart = null;
+
+// ── drag/drop & file input ───────────────────────────────────────────────────
+const dropZone  = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const browseLink = document.getElementById('browse-link');
+
+browseLink.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('click', (e) => { if (e.target !== browseLink) fileInput.click(); });
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+
+function showError(msg) {
+  const el = document.getElementById('error-msg');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function clearError() {
+  document.getElementById('error-msg').style.display = 'none';
+}
+
+// ── CSV loading ──────────────────────────────────────────────────────────────
+function loadFile(file) {
+  clearError();
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete(results) {
+      const rows = results.data;
+      if (!rows.length) { showError('CSV appears empty.'); return; }
+
+      const headers = Object.keys(rows[0]);
+      const pubCol    = headers.find(h => h.trim() === 'PyPI Published');
+      const statusCol = headers.find(h => h.trim() === 'Status');
+
+      if (!pubCol || !statusCol) {
+        showError(`Could not find required columns. Found: ${headers.join(', ')}`);
+        return;
+      }
+
+      allData = rows
+        .map(r => ({
+          year:   (r[pubCol] ?? '').trim().slice(0, 4),
+          status: (r[statusCol] ?? '').trim(),
+        }))
+        .filter(r => /^\d{4}$/.test(r.year) && r.status);
+
+      if (!allData.length) { showError('No valid rows after parsing.'); return; }
+
+      buildUI();
+      renderChart();
+    },
+    error(err) { showError(`Parse error: ${err.message}`); },
+  });
+}
+
+// ── build stat cards + controls ──────────────────────────────────────────────
+function buildUI() {
+  // stat cards
+  const total    = allData.length;
+  const statuses = [...new Set(allData.map(r => r.status))];
+  const years    = [...new Set(allData.map(r => r.year))].sort();
+
+  const statsEl = document.getElementById('stats');
+  statsEl.style.display = 'flex';
+  statsEl.innerHTML = `
+    <div class="stat-card"><div class="num">${total.toLocaleString()}</div><div class="lbl">Total packages</div></div>
+    <div class="stat-card"><div class="num">${years.length}</div><div class="lbl">Years</div></div>
+    <div class="stat-card"><div class="num">${statuses.length}</div><div class="lbl">Statuses</div></div>
+    ${statuses.map(s => {
+      const n = allData.filter(r => r.status === s).length;
+      return `<div class="stat-card"><div class="num" style="color:${colorFor(s)}">${n.toLocaleString()}</div><div class="lbl">${s}</div></div>`;
+    }).join('')}
+  `;
+
+  // controls: mode + year range + status toggles
+  const ctrlEl = document.getElementById('controls');
+  ctrlEl.style.display = 'flex';
+  ctrlEl.innerHTML = `
+    <label>Mode:
+      <select id="mode-select">
+        <option value="count">Count</option>
+        <option value="percent">100% stacked</option>
+      </select>
+    </label>
+    <div style="display:flex;gap:6px;align-items:center;">
+      <label>Statuses:</label>
+      <div class="toggle-group" id="status-toggles">
+        ${statuses.map(s => `
+          <button class="toggle-btn active" data-status="${s}"
+            style="color:${colorFor(s)};border-color:${colorFor(s)}40">
+            ${s}
+          </button>`).join('')}
+      </div>
+    </div>
+  `;
+
+  document.getElementById('mode-select').addEventListener('change', renderChart);
+
+  document.querySelectorAll('.toggle-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.classList.toggle('active');
+      renderChart();
+    });
+  });
+}
+
+// ── render ───────────────────────────────────────────────────────────────────
+function renderChart() {
+  const mode = document.getElementById('mode-select')?.value ?? 'count';
+  const activeStatuses = [...document.querySelectorAll('.toggle-btn.active')].map(b => b.dataset.status);
+
+  // aggregate
+  const years = [...new Set(allData.map(r => r.year))].sort();
+  const statuses = [...new Set(allData.map(r => r.status))].filter(s => activeStatuses.includes(s));
+
+  // counts[year][status]
+  const counts = {};
+  for (const y of years) counts[y] = {};
+  for (const { year, status } of allData) {
+    if (!activeStatuses.includes(status)) continue;
+    counts[year][status] = (counts[year][status] ?? 0) + 1;
+  }
+
+  // build series
+  const series = statuses.map(status => {
+    const data = years.map(y => {
+      const val = counts[y][status] ?? 0;
+      if (mode === 'percent') {
+        const total = statuses.reduce((s, st) => s + (counts[y][st] ?? 0), 0);
+        return total ? +(val / total * 100).toFixed(2) : 0;
+      }
+      return val;
+    });
+    return {
+      name: status,
+      type: 'bar',
+      stack: 'total',
+      data,
+      itemStyle: { color: colorFor(status) },
+      emphasis: { focus: 'series' },
+      label: { show: false },
+    };
+  });
+
+  const option = {
+    backgroundColor: '#0f1117',
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      backgroundColor: '#1e293b',
+      borderColor: '#334155',
+      textStyle: { color: '#e2e8f0', fontSize: 12 },
+      formatter(params) {
+        const year = params[0].axisValue;
+        const total = params.reduce((s, p) => s + p.value, 0);
+        const rows = params
+          .filter(p => p.value > 0)
+          .sort((a, b) => b.value - a.value)
+          .map(p => {
+            const pct = total ? (p.value / total * 100).toFixed(1) : 0;
+            return `<span style="color:${p.color}">■</span> ${p.seriesName}: <b>${
+              mode === 'percent' ? p.value + '%' : p.value.toLocaleString()
+            }</b>${mode === 'count' ? ` (${pct}%)` : ''}`;
+          }).join('<br/>');
+        return `<b>${year}</b><br/>${rows}<br/><span style="color:#64748b">Total: ${total.toLocaleString()}${mode === 'percent' ? '%' : ''}</span>`;
+      },
+    },
+    legend: { show: false },
+    grid: { left: 60, right: 20, top: 40, bottom: 40, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: years,
+      name: 'PyPI Original Package Publish Date',
+      nameLocation: 'middle',
+      nameGap: 28,
+      nameTextStyle: { color: '#94a3b8', fontSize: 12 },
+      axisLabel: { color: '#64748b', fontSize: 11 },
+      axisLine: { lineStyle: { color: '#334155' } },
+      axisTick: { lineStyle: { color: '#334155' } },
+    },
+    yAxis: {
+      type: 'value',
+      name: mode === 'percent' ? '%' : 'Packages',
+      nameTextStyle: { color: '#64748b', fontSize: 11 },
+      max: mode === 'percent' ? 100 : undefined,
+      axisLabel: {
+        color: '#64748b',
+        fontSize: 11,
+        formatter: mode === 'percent' ? v => v + '%' : v => v >= 1000 ? (v/1000).toFixed(1)+'k' : v,
+      },
+      splitLine: { lineStyle: { color: '#1e293b' } },
+    },
+    series,
+  };
+
+  if (!chart) {
+    chart = echarts.init(document.getElementById('chart'), null, { renderer: 'canvas' });
+    window.addEventListener('resize', () => chart.resize());
+  }
+  chart.setOption(option, true);
+}
+</script>
+</body>
+</html>
