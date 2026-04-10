@@ -18,7 +18,14 @@ Download the Python build report CSV from the Chainguard internal dashboard. The
 ### Step 2 — Enrich with PyPI publish dates
 
 ```bash
-pip install aiohttp tqdm
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Then run the script:
+
+```bash
 python add_pypi_dates.py <input.csv> [output.csv]
 ```
 
@@ -72,6 +79,6 @@ RETRY_DELAY = 2.0     # base delay (seconds) for exponential backoff
 
 ## Dependencies
 
-**Python:** `aiohttp`, `tqdm`
+**Python:** see `requirements.txt`
 
 **Dashboard:** No installation needed — PapaParse and ECharts are loaded from CDN.
