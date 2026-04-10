@@ -120,6 +120,32 @@
       line-height: 1.4;
     }
     #error-msg { color: #f87171; font-size: 0.85rem; margin-top: 12px; display: none; }
+
+    .section-heading {
+      display: none;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #f8fafc;
+      margin-top: 48px;
+      margin-bottom: 4px;
+      width: 100%;
+      max-width: 1200px;
+    }
+    .section-sub {
+      display: none;
+      font-size: 0.82rem;
+      color: #64748b;
+      margin-bottom: 16px;
+      width: 100%;
+      max-width: 1200px;
+    }
+    #lib-chart-row {
+      display: none;
+      width: 100%;
+      max-width: 1200px;
+      justify-content: center;
+    }
+    #lib-chart { width: 480px; height: 420px; }
   </style>
 </head>
 <body>
@@ -182,6 +208,12 @@
   </div>
 </div>
 
+<h2 id="lib-heading" class="section-heading">Library Coverage</h2>
+<p id="lib-sub" class="section-sub">Distinct libraries — built if any version has status "found"</p>
+<div id="lib-chart-row">
+  <div id="lib-chart"></div>
+</div>
+
 <script>
 // ── colour palette per status ───────────────────────────────────────────────
 const STATUS_COLORS = {
@@ -198,8 +230,9 @@ function colorFor(s) {
 }
 
 // ── state ───────────────────────────────────────────────────────────────────
-let allData = [];   // [{year, status}]
+let allData = [];   // [{year, status, library}]
 let chart = null;
+let libChart = null;
 
 // ── drag/drop & file input ───────────────────────────────────────────────────
 const dropZone  = document.getElementById('drop-zone');
@@ -240,6 +273,7 @@ function loadFile(file) {
       const headers = Object.keys(rows[0]);
       const pubCol    = headers.find(h => h.trim() === 'PyPI Published');
       const statusCol = headers.find(h => h.trim() === 'Status');
+      const reqCol    = headers.find(h => h.trim() === 'Requirement');
 
       if (!pubCol || !statusCol) {
         showError(`Could not find required columns. Found: ${headers.join(', ')}`);
@@ -247,16 +281,21 @@ function loadFile(file) {
       }
 
       allData = rows
-        .map(r => ({
-          year:   (r[pubCol] ?? '').trim().slice(0, 4),
-          status: (r[statusCol] ?? '').trim(),
-        }))
-        .filter(r => /^\d{4}$/.test(r.year) && r.status);
+        .map(r => {
+          const req = (r[reqCol] ?? '').trim();
+          return {
+            year:    (r[pubCol] ?? '').trim().slice(0, 4),
+            status:  (r[statusCol] ?? '').trim(),
+            library: req.includes('==') ? req.split('==')[0].trim() : req,
+          };
+        })
+        .filter(r => r.status);
 
       if (!allData.length) { showError('No valid rows after parsing.'); return; }
 
       buildUI();
       renderChart();
+      renderLibraryChart();
     },
     error(err) { showError(`Parse error: ${err.message}`); },
   });
@@ -267,7 +306,7 @@ function buildUI() {
   // stat cards
   const total    = allData.length;
   const statuses = [...new Set(allData.map(r => r.status))];
-  const years    = [...new Set(allData.map(r => r.year))].sort();
+  const years    = [...new Set(allData.map(r => r.year).filter(y => /^\d{4}$/.test(y)))].sort();
 
   const statsEl = document.getElementById('stats');
   statsEl.style.display = 'flex';
@@ -285,12 +324,17 @@ function buildUI() {
   const ctrlEl = document.getElementById('controls');
   ctrlEl.style.display = 'flex';
   ctrlEl.innerHTML = `
-    <label>Mode:
-      <select id="mode-select">
-        <option value="count">Count</option>
-        <option value="percent">100% stacked</option>
-      </select>
-    </label>
+    <div style="display:flex;gap:6px;align-items:center;">
+      <label>Mode:</label>
+      <div style="display:flex;gap:4px;">
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="mode" id="mode-count" value="count" checked style="accent-color:#6366f1;" /> Count
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;margin-left:8px;">
+          <input type="radio" name="mode" id="mode-percent" value="percent" style="accent-color:#6366f1;" /> 100% stacked
+        </label>
+      </div>
+    </div>
     <div style="display:flex;gap:6px;align-items:center;">
       <label>Statuses:</label>
       <div class="toggle-group" id="status-toggles">
@@ -303,7 +347,7 @@ function buildUI() {
     </div>
   `;
 
-  document.getElementById('mode-select').addEventListener('change', renderChart);
+  document.querySelectorAll('input[name="mode"]').forEach(r => r.addEventListener('change', renderChart));
 
   document.querySelectorAll('.toggle-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -311,21 +355,26 @@ function buildUI() {
       renderChart();
     });
   });
+
+  document.getElementById('lib-heading').style.display = 'block';
+  document.getElementById('lib-sub').style.display = 'block';
+  document.getElementById('lib-chart-row').style.display = 'flex';
 }
 
 // ── render ───────────────────────────────────────────────────────────────────
 function renderChart() {
-  const mode = document.getElementById('mode-select')?.value ?? 'count';
+  const mode = document.querySelector('input[name="mode"]:checked')?.value ?? 'count';
   const activeStatuses = [...document.querySelectorAll('.toggle-btn.active')].map(b => b.dataset.status);
 
-  // aggregate
-  const years = [...new Set(allData.map(r => r.year))].sort();
-  const statuses = [...new Set(allData.map(r => r.status))].filter(s => activeStatuses.includes(s));
+  // aggregate — only rows with a valid 4-digit year
+  const yearData = allData.filter(r => /^\d{4}$/.test(r.year));
+  const years = [...new Set(yearData.map(r => r.year))].sort();
+  const statuses = [...new Set(yearData.map(r => r.status))].filter(s => activeStatuses.includes(s));
 
   // counts[year][status]
   const counts = {};
   for (const y of years) counts[y] = {};
-  for (const { year, status } of allData) {
+  for (const { year, status } of yearData) {
     if (!activeStatuses.includes(status)) continue;
     counts[year][status] = (counts[year][status] ?? 0) + 1;
   }
@@ -407,6 +456,69 @@ function renderChart() {
     window.addEventListener('resize', () => chart.resize());
   }
   chart.setOption(option, true);
+}
+
+// ── library coverage ─────────────────────────────────────────────────────────
+function computeLibraryCoverage() {
+  const byLibrary = {};
+  for (const { library, status } of allData) {
+    if (!library) continue;
+    if (!byLibrary[library]) byLibrary[library] = false;
+    if (status === 'found') byLibrary[library] = true;
+  }
+  const built    = Object.values(byLibrary).filter(Boolean).length;
+  const notBuilt = Object.values(byLibrary).filter(v => !v).length;
+  return { built, notBuilt, total: built + notBuilt };
+}
+
+function renderLibraryChart() {
+  const { built, notBuilt, total } = computeLibraryCoverage();
+
+  const option = {
+    backgroundColor: '#0f1117',
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: '#1e293b',
+      borderColor: '#334155',
+      textStyle: { color: '#e2e8f0', fontSize: 12 },
+      formatter: p => `<span style="color:${p.color}">■</span> ${p.name}: <b>${p.value.toLocaleString()}</b> (${p.percent}%)`,
+    },
+    graphic: [{
+      type: 'text',
+      left: 'center',
+      top: 'middle',
+      style: {
+        text: `${total.toLocaleString()}\nlibraries`,
+        textAlign: 'center',
+        fill: '#e2e8f0',
+        fontSize: 16,
+        fontWeight: 'bold',
+        lineHeight: 22,
+      },
+    }],
+    series: [{
+      type: 'pie',
+      radius: ['45%', '70%'],
+      label: {
+        show: true,
+        color: '#94a3b8',
+        fontSize: 12,
+        formatter: p => `${p.name}\n${p.value.toLocaleString()} (${p.percent}%)`,
+      },
+      labelLine: { lineStyle: { color: '#334155' } },
+      data: [
+        { name: 'Built',     value: built,    itemStyle: { color: '#22c55e' } },
+        { name: 'Not Built', value: notBuilt, itemStyle: { color: '#ef4444' } },
+      ],
+      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.5)' } },
+    }],
+  };
+
+  if (!libChart) {
+    libChart = echarts.init(document.getElementById('lib-chart'), null, { renderer: 'canvas' });
+    window.addEventListener('resize', () => libChart.resize());
+  }
+  libChart.setOption(option, true);
 }
 </script>
 </body>

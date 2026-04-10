@@ -48,14 +48,24 @@ This fetches publish dates from the PyPI JSON API concurrently and writes a new 
 
 Open `index.html` in a browser and load the enriched CSV via the file picker or drag-and-drop. No server required — everything runs locally in the browser.
 
-The dashboard requires the CSV to have `PyPI Published` and `Status` columns.
+The dashboard requires the CSV to have `PyPI Published`, `Status`, and `Requirement` columns.
 
 ## Dashboard Features
 
-- **Histogram** of packages grouped by PyPI publish year, coloured by Chainguard build status
-- **Count / 100% stacked** toggle to switch between absolute and relative views
+### Version histogram
+
+Stacked bar chart of every package version grouped by PyPI publish year, coloured by Chainguard build status.
+
+- **Count / 100% stacked** radio buttons to switch between absolute and relative views
 - **Status filters** to show/hide individual statuses
 - **Hover tooltips** with per-year breakdowns and percentages
+
+### Library coverage donut
+
+Deduplicates by library name (ignoring version) and shows how many distinct libraries have at least one built version vs none.
+
+- A library is marked **Built** if any version of it has status `found`
+- Labels show count and percentage for each slice
 
 **Status categories:**
 
