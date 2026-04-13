@@ -71,10 +71,9 @@
     select, input[type=range] { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; padding: 5px 8px; font-size: 0.82rem; }
     .toggle-group { display: flex; gap: 6px; flex-wrap: wrap; }
     .toggle-btn {
-      padding: 4px 10px; border-radius: 20px; font-size: 0.78rem; border: 1px solid #334155;
-      cursor: pointer; background: #1e293b; color: #94a3b8; transition: all 0.15s;
+      padding: 4px 10px; border-radius: 20px; font-size: 0.78rem; border: 1px solid transparent;
+      cursor: pointer; transition: all 0.15s;
     }
-    .toggle-btn.active { border-color: currentColor; filter: brightness(1.2); }
 
     #chart-row {
       display: flex;
@@ -228,6 +227,20 @@ const STATUS_COLORS = {
 function colorFor(s) {
   return STATUS_COLORS[s] ?? '#6366f1';
 }
+function applyToggleStyle(btn, isActive) {
+  const color = colorFor(btn.dataset.status);
+  if (isActive) {
+    btn.style.background    = color + '28';
+    btn.style.borderColor   = color;
+    btn.style.color         = color;
+    btn.style.fontWeight    = '600';
+  } else {
+    btn.style.background    = '#1e293b';
+    btn.style.borderColor   = '#334155';
+    btn.style.color         = '#475569';
+    btn.style.fontWeight    = '400';
+  }
+}
 
 // ── state ───────────────────────────────────────────────────────────────────
 let allData = [];   // [{year, status, library}]
@@ -339,8 +352,7 @@ function buildUI() {
       <label>Statuses:</label>
       <div class="toggle-group" id="status-toggles">
         ${statuses.map(s => `
-          <button class="toggle-btn active" data-status="${s}"
-            style="color:${colorFor(s)};border-color:${colorFor(s)}40">
+          <button class="toggle-btn ${s !== 'not_in_pypi' ? 'active' : ''}" data-status="${s}">
             ${s}
           </button>`).join('')}
       </div>
@@ -350,8 +362,10 @@ function buildUI() {
   document.querySelectorAll('input[name="mode"]').forEach(r => r.addEventListener('change', renderChart));
 
   document.querySelectorAll('.toggle-btn').forEach(btn => {
+    applyToggleStyle(btn, btn.classList.contains('active'));
     btn.addEventListener('click', () => {
       btn.classList.toggle('active');
+      applyToggleStyle(btn, btn.classList.contains('active'));
       renderChart();
     });
   });
